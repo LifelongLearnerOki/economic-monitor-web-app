@@ -8,11 +8,11 @@ This web app allows you to search an retrieve timely information across differen
 
 and many others for deeper analysis of the economic indicators.
 
-An article write-up on this project including a description of the current as well as upcoming fueatures will be coming soon. 
+An article write-up on this project including a description of the current as well as upcoming features will be coming soon. 
            
 ## Main Purpose: 
 
-- Easy and quick access to pre-collected econmic data from different resources
+- Easy and quick access to pre-collected economic data from different resources
 - Further anaylsis by combining different economic indicators to get a more comprehensive overview of the economic enviroment
 - Enganing with real-world projcets by project-based learning approach   
            
