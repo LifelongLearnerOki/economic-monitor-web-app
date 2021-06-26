@@ -6,467 +6,428 @@ import altair as alt
 from datetime import date
 from pandas_datareader import data as web
 
-
-
-
 st.title("Economic Monitor Web App")
 
 menu = ["Equity Markets & US Treasury Bonds & Bitcoin", "Federal Finance", "Commodities", "Economic Performance", "About"]
     
 st.sidebar.header("Choose from")
 choice = st.sidebar.selectbox("Menu",menu)
-    
+
 st.sidebar.header("Select Date")
 #st.sidebar.subheader('Financials')
 startdate = st.sidebar.date_input('Start Date', date(2019, 1, 1))
 enddate = st.sidebar.date_input('End Date')
 
+## Getting data from FRED ##
+
+@st.cache
+def load_data():
+   # Markets
+    marketsdf = web.DataReader(
+        ['SP500','NASDAQ100', 'VIXCLS', 'CBBTCUSD', 'DGS10', 'DGS30', 'BOGZ1FL663067003Q'], 'fred', startdate)
+    marketsdf  = marketsdf.interpolate(method='linear')
+    marketsdf['Date'] = marketsdf.index
+
+    # Money Supply
+    moneysupplydf  = web.DataReader(
+        ['WM1NS', 'WM2NS', 'BOGMBASE', 'M2V', 'TLAACBW027SBOG', 'CASACBW027SBOG', 'USGSEC', 'MABMM301USM189S', 'TOTBKCR', 'TOTALSL'], 'fred', startdate)
+    moneysupplydf  = moneysupplydf.interpolate(method='linear')
+
+    # Federal Finance
+    federalfinancedf = web.DataReader(
+        ['FGRECPT','W006RC1Q027SBEA','FYFRGDA188S','FGEXPND','A091RC1Q027SBEA','GFDEBTN','FDHBFRBN','FYGFDPUN','FDHBFIN'], 'fred', startdate)
+
+    # Commodity
+    commoditydf = web.DataReader(
+        ['GOLDPMGBD228NLBM','SLVPRUSD','MHHNGSP','DCOILWTICO','PCOALAUUSDM','PURANUSDM','PIORECRUSDM','PALUMUSDM','PNICKUSDM','PCOPPUSDM',
+         'PMAIZMTUSDM','PWHEAMTUSDM','PPOILUSDM','PSOYBUSDM'], 'fred', startdate)
+    commoditydf  = commoditydf.interpolate(method='linear')
+    commoditydf['Copper/Gold Ratio'] = commoditydf['PCOPPUSDM'] / commoditydf['GOLDPMGBD228NLBM']
+    # PPI
+    ppidf = web.DataReader(
+        ['PPIACO','WPU101', 'WPUSI012011','WPS0811', 'WPU083', 'PCU325211325211', 'PCU33443344', 'PCU325325'], 'fred', startdate)
+    
+    # Economic Performance
+    economicperformdf = web.DataReader(
+        ['GDP', 'GDPC1', 'ASTDSL', 'MEDCPIM158SFRBCLE','CORESTICKM159SFRBATL', 'UNRATE', 'U6RATE', 'PSAVERT', 'CES0500000003', 'CES0500000011', 'TCU',
+         'RRVRUSQ156N', 'RHVRUSQ156N', 'TOTBUSSMSA', 'BUSINV', 'ISRATIO', 'DGORDER', 'AMDMVS'], 'fred', startdate)
+    economicperformdf  = economicperformdf.interpolate(method='linear')
+    economicperformdf['Date'] = economicperformdf.index
+    
+    return marketsdf, moneysupplydf, federalfinancedf, commoditydf, ppidf, economicperformdf 
+
+
+marketsdf, moneysupplydf, federalfinancedf, commoditydf, ppidf, economicperformdf  = load_data()
+
+
+## Multiline Viz ##
+
+def multiline_viz(df,*arg):
+ # Create a selection that chooses the nearest point & selects based on x-value
+    nearest = alt.selection(type='single', nearest=True, on='mouseover',
+                        fields=['Date'], empty='none')
+    
+    
+    base = alt.Chart(df).transform_fold(
+        [*arg],
+    ).mark_line().encode(
+        x='Date:T',
+        y='value:Q',
+        tooltip = [
+            alt.Tooltip('Date:T'),
+            alt.Tooltip('value:Q'),
+            ],
+        color='key:N'
+    )
+    
+        # Transparent selectors across the chart. This is what tells us
+    # the x-value of the cursor
+    selectors = alt.Chart(df).mark_point().encode(
+        x='Date:T',
+        opacity=alt.value(0),
+    ).add_selection(
+        nearest
+    )
+
+    # Draw points on the line, and highlight based on selection
+    points = base.mark_point().encode(
+        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
+    )
+
+    # Draw text labels near the points, and highlight based on selection
+    text = base.mark_text(align='left', dx=5, dy=-5).encode(
+        text=alt.condition(nearest, 'value:Q', alt.value(' '))
+    )
+
+    # Draw a rule at the location of the selection
+    rules = alt.Chart(df).mark_rule(color='gray').encode(
+        x='Date:T',
+    ).transform_filter(
+        nearest
+    )
+    
+    # Put the five layers into a chart and bind the data
+    base2 = alt.layer(
+        base, selectors, points, rules, text
+    ).properties(
+        width=600, height=300
+    )
+
+    
+    return st.altair_chart(base2)
+
+
+## Page Selection ##
+
 if choice == "Equity Markets & US Treasury Bonds & Bitcoin":
     st.subheader("Equity Markets & US Treasury Bonds & Bitcoin")
-
-    # Ticker
-    tickersp500 = 'SP500' # S&P 500
-
-    # User pandas_reader.data.DataReader to load the desired data.
-    sp500df = web.DataReader(tickersp500, 'fred', startdate)['SP500']
-
-    # Visualization
+    
+    # S&P500
     st.write('S&P 500')
-    st.line_chart(sp500df)
+    st.line_chart(marketsdf['SP500'])
 
     # Nasdaq100
-    nasdaq100df = web.DataReader('NASDAQ100', 'fred', startdate)['NASDAQ100']
-
-    # Visualization
     st.write('NASDAQ100')
-    st.line_chart(nasdaq100df)
-
-    # Volatility Index
-    vixdf = web.DataReader('VIXCLS', 'fred', startdate)['VIXCLS']
-
-    st.write('Volatility Index: VIX')
-    st.line_chart(vixdf)
+    st.line_chart(marketsdf['NASDAQ100'])
 
     # Coinbase Bitcoin 
-    bitcoindf = web.DataReader('CBBTCUSD', 'fred', startdate)['CBBTCUSD']
-
     st.write('Bitcoin [$US]')
-    st.line_chart(bitcoindf)
+    st.line_chart(marketsdf['CBBTCUSD'])
 
-    # US 10-year Treasury Rate
-    treasury10y = web.DataReader('DGS10', 'fred', startdate)['DGS10']
-
-    st.write('US 10-year Treasury Rate [%]')
-    st.line_chart(treasury10y)
-
-    # US 10-Year Treasury Inflation-Indexed Security, Constant Maturity 
-    treasuryinflation10y = web.DataReader('DFII10', 'fred', startdate)['DFII10']
-
-    st.write('US 10-Year Treasury Inflation-Indexed Security [%]')
-    st.line_chart(treasuryinflation10y)
-
-    # US 30-year Treasury Rate
-    treasury30y = web.DataReader('DGS30', 'fred', startdate)['DGS30']
-
-    st.write('US 30-year Treasury [%]')
-    st.line_chart(treasury30y)
-
+    # SP500/Bitcoin
+    st.write('SP500/Bitcoin Ratio')
+    st.line_chart(marketsdf['SP500'] / marketsdf['CBBTCUSD'])
+    
+    # US 10/30-year Treasury Rate
+    st.write('US 10/30-year Treasury Rate [%]')
+    multiline_viz(marketsdf, 'DGS10', 'DGS30')
+    
     # BTC vs. Gold/Silver vs. S&P500/Nasdaq vs. 10/30y-Treasury
     st.write('Corr BTC / S&P500&Nasdaq / US10&30y-Treasury')
-    data = sp500df.to_frame().join([bitcoindf,nasdaq100df,treasury10y,treasury30y], how='outer')
-    data['Year'] = data.index
-    # Coorelation S&P500/Nasdaq vs. 10/30y-Treasury
-    st.write(data.corr())
+    st.write(marketsdf[marketsdf.columns.drop(['BOGZ1FL663067003Q', 'VIXCLS'])].corr())
+    
+    # Volatility Index
+    st.write('Volatility Index: VIX')
+    st.line_chart(marketsdf['VIXCLS'])
+    
+    # Security Brokers and Dealers; Margin Accounts at Brokers and Dealers; Asset, Level 
+    st.write('Security Brokers and Dealers; Margin Accounts at Brokers and Dealers [Millions of $US]')
+    st.line_chart(marketsdf['BOGZ1FL663067003Q'])
 
     st.subheader("Money Supply")
-
+        
+    # US Monetary Base; Total 
+    st.write('US Monetary Base [Millions of $US]')
+    st.line_chart(moneysupplydf['BOGMBASE']) 
+    
     # US M1 Money Stock 
-    m1df = web.DataReader('WM1NS', 'fred', startdate)['WM1NS']
-
     st.write('US M1 Money Stock')
-    st.line_chart(m1df)
+    st.line_chart(moneysupplydf['WM1NS'])
 
     # US M2 Money Stock 
-    m2df = web.DataReader('WM2NS', 'fred', startdate)['WM2NS']
-
     st.write('US M2 Money Stock')
-    st.line_chart(m2df)
+    st.line_chart(moneysupplydf['WM2NS'])   
 
     # US Velocity of M2 Money Stock 
-    m2vdf = web.DataReader('M2V', 'fred', startdate)['M2V']
-
     st.write('US Velocity of M2 Money Stock')
-    st.line_chart(m2vdf)
+    st.line_chart(moneysupplydf['M2V'])
+    
+    # Total Assets, All Commercial Banks 
+    st.write('Total Assets, All US Commercial Banks [Billions of $US]')
+    st.line_chart(moneysupplydf['TLAACBW027SBOG'])
 
-    # US M3 Money Stock
-    m3df = web.DataReader('MABMM301USM189S', 'fred', startdate)['MABMM301USM189S']
+    # Cash Assets, All Commercial Banks 
+    st.write('Cash Assets, All US Commercial Banks [Billions of $US]')
+    st.line_chart(moneysupplydf['CASACBW027SBOG'])
+    
+    # Treasury and Agency Securities, All Commercial Banks   
+    st.write('Treasury and Agency Securities, All US Commercial Banks [Billions of $US]')
+    st.line_chart(moneysupplydf['USGSEC'])
+    
+    # Commercial Banks Treasury and Agency Securities/Total Assets Ratio
+ 
+    st.write('US Commercial Banks Treasury and Agency Securities/Total Assets Ratio')
+    st.line_chart(moneysupplydf['USGSEC']/moneysupplydf['TLAACBW027SBOG'])
+    
+    # Cash Assets/Total Assets Ratio
+ 
+    st.write('US Commercial Banks Cash Assets/Total Assets Ratio')
+    st.line_chart(moneysupplydf['CASACBW027SBOG']/moneysupplydf['TLAACBW027SBOG'])
 
-    st.write('US M3 Money Stock')
-    st.line_chart(m3df)    
+    # Bank Credit All US Commercial Banks
+    st.write('Bank Credit All US Commercial Banks [Billions of $US]')
+    st.line_chart(moneysupplydf['TOTBKCR'])   
 
-    # Bank Credit All Commercial Banks US
-    bankcreditdf = web.DataReader('TOTBKCR', 'fred', startdate)['TOTBKCR']
-
-    st.write('Bank Credit All Commercial Banks US [Billions of $US]')
-    st.line_chart(bankcreditdf)   
-
-    # Total Consumer Credit Owned and Securitized, Outstanding
-    consumercreditdf = web.DataReader('TOTALSL', 'fred', startdate)['TOTALSL']
-
-    st.write('Total Consumer Credit Owned and Securitized, Outstanding [Billions of $US]')
-    st.line_chart(consumercreditdf)   
+    # Total US Consumer Credit Owned and Securitized, Outstanding
+    st.write('Total US Consumer Credit Owned and Securitized, Outstanding [Billions of $US]')
+    st.line_chart(moneysupplydf['TOTALSL'])   
 
 elif choice == "Federal Finance":
     st.subheader('Federal Finance')
 
     # Federal Receipts 
-    federalreceiptsdf = web.DataReader('FGRECPT', 'fred', startdate)['FGRECPT']
-
     st.write('US Federal Receipts [Millions of $US]')
-    st.line_chart(federalreceiptsdf) 
+    st.line_chart(federalfinancedf['FGRECPT']) 
 
     # Federal government current tax receipts
-    federaltaxreceiptsdf = web.DataReader('W006RC1Q027SBEA', 'fred', startdate)['W006RC1Q027SBEA']
-
     st.write('US Federal government current tax receipts [Billions of $US]')
-    st.line_chart(federaltaxreceiptsdf)
-
-    # Federal Receipts as Percent of Gross Domestic Product 
-    federalreceiptsofgdpdf = web.DataReader('FYFRGDA188S', 'fred', startdate)['FYFRGDA188S']
-
-    st.write('US Federal Receipts as Percent of Gross Domestic Product [% of GDP]')
-    st.line_chart(federalreceiptsofgdpdf)  
+    st.line_chart(federalfinancedf['W006RC1Q027SBEA'])
 
     # Federal Government: Current Expenditures
-    federalexpendpdf = web.DataReader('FGEXPND', 'fred', startdate)['FGEXPND']
-
     st.write('US Federal Government: Current Expenditures [Billions of $US]')
-    st.line_chart(federalexpendpdf)  
-
-    # Federal government current expenditures: Interest payments 
-    federalinterestpaymentdf = web.DataReader('A091RC1Q027SBEA', 'fred', startdate)['A091RC1Q027SBEA']
-
-    st.write('US Federal government current expenditures: Interest payments [Billions of $US]')
-    st.line_chart(federalinterestpaymentdf)
+    st.line_chart(federalfinancedf['FGEXPND'])  
 
     # Federal Debt: Total Public Debt
-    federaldebtdf = web.DataReader('GFDEBTN', 'fred', startdate)['GFDEBTN']
-
     st.write('US Federal Debt: Total Public Debt [Millions of $US]')
-    st.line_chart(federaldebtdf)
+    st.line_chart(federalfinancedf['GFDEBTN'])
+    
+    # Federal government current expenditures: Interest payments 
+    st.write('US Federal government current expenditures: Interest payments [Billions of $US]')
+    st.line_chart(federalfinancedf['A091RC1Q027SBEA'])
 
     # Federal Debt Held by Federal Reserve Banks 
-    federaldebtbyfeddf = web.DataReader('FDHBFRBN', 'fred', startdate)['FDHBFRBN']
-
     st.write('US Federal Debt Held by Federal Reserve Banks [Billions of $US]')
-    st.line_chart(federaldebtbyfeddf)
+    st.line_chart(federalfinancedf['FDHBFRBN'])
 
     # Federal Debt Held by the Public 
-    federaldebtbypublicdf = web.DataReader('FYGFDPUN', 'fred', startdate)['FYGFDPUN']
-
     st.write('US Federal Debt Held by the Public [Millions of $US]')
-    st.line_chart(federaldebtbypublicdf)
+    st.line_chart(federalfinancedf['FYGFDPUN'])
 
     # Federal Debt Held by Foreign and International Investors
-    federaldebtbyforeigndf = web.DataReader('FDHBFIN', 'fred', startdate)['FDHBFIN']
-
     st.write('US Federal Debt Held by Foreign and International Investors [Billions of $US]')
-    st.line_chart(federaldebtbyforeigndf)
-
-    # Federal Debt: Total Public Debt as Percent of Gross Domestic Product 
-    federaldebtofgdpdf = web.DataReader('GFDEGDQ188S', 'fred', startdate)['GFDEGDQ188S']
-
-    st.write('US Federal Debt: Total Public Debt as Percent of Gross Domestic Product [% of GDP]')
-    st.line_chart(federaldebtofgdpdf)
+    st.line_chart(federalfinancedf['FDHBFIN'])
 
 
 elif choice == "Commodities":
 
     st.subheader('Precious Metals')
-
-    # Gold Fixing Price 10:30 A.M. (London time) in London Bullion Market
-    goldpricedf = web.DataReader('GOLDPMGBD228NLBM', 'fred', startdate)['GOLDPMGBD228NLBM']
-
+ 
+    # Gold Fixing Price 10:30 A.M. (London time) in London Bullion Market    
     st.write('Gold Fixing Price ($US per Troy Ounce) - 10:30 A.M. Londin time')
-    st.line_chart(goldpricedf)
-
+    st.line_chart(commoditydf['GOLDPMGBD228NLBM'])
+    
     # Silver Fixing Price 12:00 noon (London time) in London Bullion Market
-    silverdf = web.DataReader('SLVPRUSD', 'fred', startdate)['SLVPRUSD']
-
     st.write('Silver Fixing Price ($US per Troy Ounce) - 12:00 noon London time')
-    st.line_chart(silverdf)
-
+    st.line_chart(commoditydf['SLVPRUSD'])
+    
     st.subheader("Energy")
 
     # Henry Hub Natural Gas Spot Price 
-    gasdf = web.DataReader('MHHNGSP', 'fred', startdate)['MHHNGSP']
-
     st.write('Henry Hub Natural Gas Spot Price ($US per Million BTU)')
-    st.line_chart(gasdf)
+    st.line_chart(commoditydf['MHHNGSP'])
 
     # West Texas Intermediate Oil Price (WTI)
-    oilpricedf = web.DataReader('DCOILWTICO','fred', startdate)
-
     st.write('Oil Price [$US per Barrel] - WTI')
-    st.line_chart(oilpricedf)
+    st.line_chart(commoditydf['DCOILWTICO'])
 
     # Global price of Coal, Australia 
-    coaldf = web.DataReader('PCOALAUUSDM','fred', startdate)
-
     st.write('Global price of Coal [$US per Metric Ton]')
-    st.line_chart(coaldf)
+    st.line_chart(commoditydf['PCOALAUUSDM'])
 
     # Global price of Uranium 
-    uraniumdf = web.DataReader('PURANUSDM','fred', startdate)
-
     st.write('Global price of Uranium [$US per Pound]')
-    st.line_chart(uraniumdf)
-
+    st.line_chart(commoditydf['PURANUSDM'])
 
     st.subheader("Industry Metals")
 
     # Global price of Iron Ore
-    ironoredf = web.DataReader('PIORECRUSDM', 'fred', startdate)['PIORECRUSDM']
-
     st.write('Global price of Iron Ore [$US per Metric Ton]')
-    st.line_chart(ironoredf)
+    st.line_chart(commoditydf['PIORECRUSDM'])
 
     # Global price of Aluminum 
-    aluminumdf = web.DataReader('PALUMUSDM', 'fred', startdate)['PALUMUSDM']
-
     st.write('Global price of Aluminum [$US per Metric Ton]')
-    st.line_chart(aluminumdf)
+    st.line_chart(commoditydf['PALUMUSDM'])
 
     # Global price of Nickel 
-    nickeldf = web.DataReader('PNICKUSDM', 'fred', startdate)['PNICKUSDM']
-
     st.write('Global price of Nickel [$US Dollars per Metric Ton]')
-    st.line_chart(nickeldf)
+    st.line_chart(commoditydf['PNICKUSDM'])
 
     # Global price of Copper 
-    copperdf = web.DataReader('PCOPPUSDM', 'fred', startdate)['PCOPPUSDM']
-
     st.write('Global price of Copper [$US per Metric Ton]')
-    st.line_chart(copperdf)
+    st.line_chart(commoditydf['PCOPPUSDM'])
 
     # Copper/Gold
-    coppergold = copperdf.to_frame().join(goldpricedf, how='outer')
-    # Interpolate with a linear method to fill out the gab in the graph
-    coppergold  = coppergold .interpolate(method='linear')
-    coppergold['Date'] = coppergold.index 
-    coppergold['coppergold'] = coppergold['PCOPPUSDM'] / coppergold['GOLDPMGBD228NLBM']
-
-    st.write('Copper/Gold Ratio ')
-    st.line_chart(coppergold['coppergold'])
-
-
+    st.write('Copper/Gold Ratio')
+    st.line_chart(commoditydf['Copper/Gold Ratio'])
+    
     st.subheader("Agriculture")
 
     # Global price of Corn 
-    corndf = web.DataReader('PMAIZMTUSDM', 'fred', startdate)['PMAIZMTUSDM']
-
     st.write('Global price of Corn [$US per Metric Ton]')
-    st.line_chart(corndf)
-
+    st.line_chart(commoditydf['PMAIZMTUSDM'])
+                  
     # Global price of Wheat
-    wheatdf = web.DataReader('PWHEAMTUSDM', 'fred', startdate)
-
     st.write('Global price of Wheat [$US per Metric Ton]')
-    st.line_chart(wheatdf)
+    st.line_chart(commoditydf['PWHEAMTUSDM'])
 
     # Global price of Palm Oil 
-    palmoildf = web.DataReader('PPOILUSDM', 'fred', startdate)
-
     st.write('Global price of Palm Oil [$US per Metric Ton]')
-    st.line_chart(palmoildf)
+    st.line_chart(commoditydf['PPOILUSDM'])
 
     # Global price of Soybeans 
-    soybeansdf = web.DataReader('PSOYBUSDM', 'fred', startdate)
-
     st.write('Global price of Soybeans [$US per Metric Ton]')
-    st.line_chart(soybeansdf)
+    st.line_chart(commoditydf['PSOYBUSDM'])
 
     st.subheader("Producer Price Index")
     st.write("(Index 1982 = 100)")
-
+    
     # Producer Price Index by Commodity: All Commodities
-    ppidf = web.DataReader('PPIACO', 'fred', startdate)
-
     st.write('Producer Price Index by Commodity: All Commodities')
-    st.line_chart(ppidf)   
+    st.line_chart(ppidf['PPIACO'])   
 
     # Producer Price Index by Commodity: Metals and Metal Products: Iron and Steel
-    ppimetaldf = web.DataReader('WPU101', 'fred', startdate)
-
     st.write('Producer Price Index by Commodity: Metals and Metal Products: Iron and Steel')
-    st.line_chart(ppimetaldf)
+    st.line_chart(ppidf['WPU101'])
 
     # Producer Price Index by Commodity: Special Indexes: Construction Materials
-    ppiconstructionpdf = web.DataReader('WPUSI012011', 'fred', startdate)
-
     st.write('Producer Price Index by Commodity: Special Indexes: Construction Materials')
-    st.line_chart(ppiconstructionpdf)
+    st.line_chart(ppidf['WPUSI012011'])
 
     # Producer Price Index by Commodity: Lumber and Wood Products: Softwood Lumber 
-    ppisoftwoodlumberdf = web.DataReader('WPS0811', 'fred', startdate)
-
     st.write('Producer Price Index by Commodity: Lumber and Wood Products: Softwood Lumber')
-    st.line_chart(ppisoftwoodlumberdf)
+    st.line_chart(ppidf['WPS0811'])
 
     # Producer Price Index by Commodity: Lumber and Wood Products: Plywood
-    ppiwoodlumberdf = web.DataReader('WPU083', 'fred', startdate)
-
     st.write('Producer Price Index by Commodity: Lumber and Wood Products: Plywood')
-    st.line_chart(ppiwoodlumberdf)
+    st.line_chart(ppidf['WPU083'])
 
     # Producer Price Index by Industry: Plastics Material and Resins Manufacturing
-    ppiplasticdf = web.DataReader('PCU325211325211', 'fred', startdate)
-
     st.write('Producer Price Index by Industry: Plastics Material and Resins Manufacturing')
-    st.line_chart(ppiplasticdf)
+    st.line_chart(ppidf['PCU325211325211'])
 
     # Producer Price Index by Industry: Semiconductor and Other Electronic Component Manufacturing
-    ppisemidf = web.DataReader('PCU33443344', 'fred', startdate)
-
     st.write('Producer Price Index by Industry: Semiconductor and Other Electronic Component Manufacturing')
-    st.line_chart(ppisemidf)
+    st.line_chart(ppidf['PCU33443344'])
 
     # Producer Price Index by Industry: Chemical Manufacturing
-    ppichemdf = web.DataReader('PCU325325', 'fred', startdate)
-
     st.write('Producer Price Index by Industry: Chemical Manufacturing')
-    st.line_chart(ppichemdf)
-
-
-    # US Median Consumer Price Index(CPI)
-    cpidf = web.DataReader('MEDCPIM158SFRBCLE', 'fred', startdate)
-
-    st.write('Median CPI')
-    st.line_chart(cpidf)
+    st.line_chart(ppidf['PCU325325'])
+    
 
 elif choice == "Economic Performance":
     st.subheader("Economic Performance")
 
     # US Gross Domestic Product (GDP)
-    gdp = web.DataReader('GDP', 'fred', startdate)
-
     st.write('US GDP')
-    st.line_chart(gdp)
+    st.line_chart(economicperformdf['GDP'])
 
     # US Real GDP
-    realgdp = web.DataReader('GDPC1', 'fred', startdate)
-
     st.write('US Real GDP')
-    st.line_chart(realgdp)
-
+    st.line_chart(economicperformdf['GDPC1'])
+    
+    # US All Sectors; Total Debt Securities; Liability, Level 
+    st.write('US All Sectors; Total Debt Securities; Liability,')
+    st.line_chart(economicperformdf['ASTDSL'])
+    
+    # US All Sectors; Total Debt Securities / GDP Ratio
+    st.write('US All Sectors; Total Debt Securities / GDP Ratio')
+    st.line_chart((economicperformdf['ASTDSL']/1000)/economicperformdf['GDP'])
+    
+    # US All Sectors; Total Debt Securities / M2 Ratio
+    st.write('US All Sectors; Total Debt Securities / M2 Ratio')
+    st.line_chart(((economicperformdf['ASTDSL']/1000)/moneysupplydf['WM2NS']).interpolate(method='linear'))
+    
+    # US Median Consumer Price Index(CPI)
+    st.write('Median CPI')
+    st.line_chart(economicperformdf['MEDCPIM158SFRBCLE'])
+    
+    # Sticky Price Consumer Price Index less Food and Energy
+    st.write('Core CPI (less Food&Energy)')
+    st.line_chart(economicperformdf['CORESTICKM159SFRBATL'])
+    
     st.subheader("Labor Market")
 
-    # US Unemployment Rate
-    unemploymentdf = web.DataReader('UNRATE', 'fred', startdate)
-
-    st.write('US Unemployment Rate')
-    st.line_chart(unemploymentdf)
-
-    # US Unemployment Rate (U-6)
-    unemploymentu6df = web.DataReader('U6RATE', 'fred', startdate)
-
-    st.write('US Unemployment Rate(U-6)')
-    st.line_chart(unemploymentu6df)
-
+    # US Unemployment Rate (U3&U6)
+    st.write('US Unemployment Rate (U3&U6)')
+    multiline_viz(economicperformdf, 'UNRATE', 'U6RATE')
+    
     # US Personal Savings Rate
-    personalsavingratetdf = web.DataReader('PSAVERT', 'fred', startdate)
-
     st.write('US Personal Saving Rate')
-    st.line_chart(personalsavingratetdf)
+    st.line_chart(economicperformdf['PSAVERT'])
 
-    # US Average Hourly Earnings of All Employees, Total Private 
-    hourlyearningsdf = web.DataReader('CES0500000003', 'fred', startdate)
-
+    # US Average Hourly Earnings of All Employees, Total Private
     st.write('US Average Hourly Earnings of All Employees [$US]')
-    st.line_chart(hourlyearningsdf)
-
+    st.line_chart(economicperformdf['CES0500000003'])
+    
     # US Average Weekly Earnings of All Employees, Total Private
-    weeklyearningsdf = web.DataReader('CES0500000011', 'fred', startdate)
-
     st.write('US Average Weekly Earnings of All Employees [$US]')
-    st.line_chart(weeklyearningsdf)
-
-    # US Manufacturing Sector: Labor Productivity 
-    laborproductivitydf = web.DataReader('MPU9900063', 'fred', startdate)
-
-    st.write('US Labor Productivity - Manufacturing Sector [% YoY]')
-    st.line_chart(laborproductivitydf)
-
-    # Private Business Sector: Labor Productivity 
-    laborproductivityprivatdf = web.DataReader('MPU4900063', 'fred', startdate)
-
-    st.write('US Labor Productivity - Private Business Sector [% YoY]')
-    st.line_chart(laborproductivityprivatdf)
+    st.line_chart(economicperformdf['CES0500000011'])
 
     st.subheader("Business Activity")
 
     # Capacity Utilization: Total Index 
-    capacityutildf = web.DataReader('TCU', 'fred', startdate)
-
     st.write('US Capacity Utilization [% of Capacity]')
-    st.line_chart(capacityutildf)
-
-    # New Privately-Owned Housing Units Started 
-    privatehousingunitsgdf = web.DataReader('HOUST', 'fred', startdate)
-
-    st.write('US New Privately-Owned Housing Units Started [Thousands of Units]')
-    st.line_chart(privatehousingunitsgdf)
-
-    # New Privately-Owned Housing Units Under Construction  
-    privatehousingunitsconstgdf = web.DataReader('UNDCONTSA', 'fred', startdate)
-
-    st.write('US New Privately-Owned Housing Units Under Construction [Thousands of Units]')
-    st.line_chart(privatehousingunitsconstgdf)                                          
+    st.line_chart(economicperformdf['TCU'])                                         
 
     # Rental Vacancy Rate for the United States  
-    rentalvacancydf = web.DataReader('RRVRUSQ156N', 'fred', startdate)
-
     st.write('US Rental Vacancy Rate [%]')
-    st.line_chart(rentalvacancydf)
+    st.line_chart(economicperformdf['RRVRUSQ156N'])
 
     # Homeowner Vacancy Rate for the United States
-    homeownervacancydf = web.DataReader('RHVRUSQ156N', 'fred', startdate)
-
     st.write('US Homeowner Vacancy Rate [%]')
-    st.line_chart(homeownervacancydf)        
+    st.line_chart(economicperformdf['RHVRUSQ156N'])        
 
     # Total Business Sales 
-    businesssalesdf = web.DataReader('TOTBUSSMSA', 'fred', startdate)
-
     st.write('US Total Business Sales [Millions of $US]')
-    st.line_chart(businesssalesdf)            
+    st.line_chart(economicperformdf['TOTBUSSMSA'])            
 
-    #  Total Business Inventories
-    businessinventoriesdf = web.DataReader('BUSINV', 'fred', startdate)
-
+    # Total Business Inventories
     st.write('US Total Business Inventories [Millions of $US]')
-    st.line_chart(businessinventoriesdf)
+    st.line_chart(economicperformdf['BUSINV'])
 
     # Total Business: Inventories to Sales Ratio
-    inventoriestosalesratiodf = web.DataReader('ISRATIO', 'fred', startdate)
-
     st.write('US Total Business: Inventories to Sales Ratio')
-    st.line_chart(inventoriestosalesratiodf)     
+    st.line_chart(economicperformdf['ISRATIO'])     
 
     # Manufacturers New Orders: Durable Goods
-    manufacnewordersdf = web.DataReader('DGORDER', 'fred', startdate)
-
     st.write('US Manufacturers New Orders: Durable Goods [Millions of $US]')
-    st.line_chart(manufacnewordersdf)   
+    st.line_chart(economicperformdf['DGORDER'])   
 
     # Manufacturers' Value of Shipments: Durable Goods 
-    manufacnewshipdf = web.DataReader('AMDMVS', 'fred', startdate)
-
     st.write('US Manufacturers Value of Shipments: Durable Goods  [Millions of $US]')
-    st.line_chart(manufacnewshipdf)   
+    st.line_chart(economicperformdf['AMDMVS'])   
 
 
 elif choice == "About":
-    st.subheader("About Economic Monitor Web App")
     st.info("Built with Streamlit by [Lifelonglearner](https://www.lifelonglearner.de/)")
     st.text("LifelongLearner")
